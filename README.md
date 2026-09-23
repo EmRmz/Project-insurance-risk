@@ -1,5 +1,4 @@
 # Project-insurance-risk
-# Automotive Insurance Risk and Transition Modeling
 
 ## Project Description
 Insurance companies need to predict the probability that a customer will change risk categories (e.g., moving from a safe-driver bonus tier to higher rates due to accumulated claims). 
