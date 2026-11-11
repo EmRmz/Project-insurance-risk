@@ -1,34 +1,80 @@
 # Project-insurance-risk
 
-## Project Description
-Insurance companies need to predict the probability that a customer will change risk categories (e.g., moving from a safe-driver bonus tier to higher rates due to accumulated claims). 
+Proyecto académico que estima la frecuencia de siniestros de autos y simula cómo puede cambiar el nivel de riesgo de una cartera de conductores.
 
-This model uses **Monte Carlo simulation** to estimate driver risk and to simulate the annual transitions of policyholders between different risk states, combining historical data, probability, and linear algebra (Markov chains).
+## En pocas palabras
 
-## Objective
-Establish risk categories based on claim history (e.g., *Preferential, Standard, Moderate Risk, High Risk*).
+1. Usa datos reales de seguros de auto de Francia.
+2. Aprende qué características se relacionan con más o menos siniestros.
+3. Clasifica a los conductores en cuatro niveles: Preferencial, Estándar, Riesgo moderado y Alto riesgo.
+4. Simula posibles resultados futuros y compara la simulación con una cadena de Markov.
 
-## Methodology
-1. **Risk function:** Study a concrete risk function from the literature (paper) and use it as the basis of the model.
-2. **Driver populations:** Find real driver population data to feed the risk function.
-3. **Risk calculation:** Compute the risk score for each driver in the population using Monte Carlo simulation (see below).
-4. **Categorization:** Classify drivers into 4 risk levels (*Preferential, Standard, Moderate Risk, High Risk*).
-5. **Individual assessment:** Given your own data, use the model to determine which risk category you belong to.
+El programa de análisis y el modelo están escritos en C. Python se usa únicamente para crear las gráficas.
 
-## Monte Carlo Model
-Monte Carlo simulation is used in two stages of the project:
+## Datos y límites del modelo
 
-### 1. Risk estimation
-For each driver, the risk function from the paper (e.g., an expected claim rate λ that depends on age, driving experience, vehicle type, etc.) is used to simulate thousands of years of driving:
+Se usa el conjunto [freMTPL2freq de OpenML](https://www.openml.org/d/41214), con pólizas reales de Francia. El modelo estima la **frecuencia** de siniestros, no su costo.
 
-- In each simulated year, the number of claims is drawn at random from the driver's claim distribution (e.g., Poisson(λ)).
-- Repeating this *N* times produces a distribution of claims per driver, not just a single number.
-- The driver's risk score is taken from this distribution (e.g., expected claims, or the probability of having one or more claims per year), and the score determines the driver's risk category.
+Las categorías se definen usando cuartiles de riesgo de esa población: sirven para comparar conductores dentro de los datos, pero no son una medida universal de peligro ni determinan una prima real. Los resultados son simulaciones, no predicciones garantizadas sobre una persona.
 
-### 2. Transition simulation
-Once drivers are categorized, the 4 risk levels become the states of a Markov chain with transition matrix **P**, where `P[i][j]` is the probability of moving from category *i* to category *j* in one year.
+## Cómo ejecutarlo
 
-- Simulate a portfolio of *N* drivers year by year: for each driver, draw a random number and use the row of **P** for their current category to choose next year's category.
-- Project the portfolio over **5 and 10 years**.
-- Compare the simulated results with the exact result `π_t = π_0 · P^t` and with the stationary distribution (`π = π · P`) to validate the simulation.
-- Evaluate scenarios by changing **P** (e.g., stricter or more lenient insurer policies) and comparing the resulting portfolio distributions.
+Necesitas un compilador C (GCC o Clang), `make`, `curl` y Python 3. La primera ejecución descarga los datos. Para crear las tablas y el modelo:
+
+```bash
+make run
+```
+
+Para compilar y correr las pruebas:
+
+```bash
+make test
+```
+
+Para instalar los paquetes de las gráficas y generarlas:
+
+```bash
+python -m pip install -r plots/requirements.txt
+make figures
+```
+
+Las imágenes se guardan en `results/figures/`. `make figures` debe ejecutarse después de `make run`, porque usa las tablas generadas por el análisis.
+
+## Evaluar un conductor
+
+Primero genera el modelo y compila el programa:
+
+```bash
+make run
+make assess_driver
+```
+
+Ejemplo en Windows PowerShell:
+
+```powershell
+.\assess_driver.exe --age 23 --veh-age 3 --bonus-malus 90 --density 1200 --horizon 10
+```
+
+En Linux o macOS, usa `./assess_driver` en lugar de `.\assess_driver.exe`.
+
+El programa muestra la frecuencia esperada de siniestros por año, su categoría actual y una proyección. Puedes cambiar los datos con estas opciones:
+
+| Opción | Significado | Valor predeterminado |
+|---|---|---:|
+| `--age` | Edad del conductor (requerida) | — |
+| `--veh-age` | Antigüedad del vehículo en años (requerida) | — |
+| `--veh-power` | Clase de potencia del vehículo | 6 |
+| `--bonus-malus` | Coeficiente de historial; 50 es bajo y 100 equivale a conductor nuevo | 100 |
+| `--density` | Densidad de población en habitantes/km² | 1000 |
+| `--gas` | Tipo de combustible: `Regular` o `Diesel` | `Regular` |
+| `--horizon` | Años de proyección, entre 0 y 50 | 10 |
+| `--years` | Simulaciones Monte Carlo | 10000 |
+| `--seed` | Semilla para repetir la simulación | Hora actual |
+
+## Archivos principales
+
+- `src/`: modelo, datos, simulación y cadena de Markov en C.
+- `plots/`: scripts Python para generar las gráficas.
+- `results/`: tablas CSV, modelo ajustado y gráficas generadas.
+- `tests/`: pruebas del modelo y la simulación.
+- `docs/AVANCE_1.md` y `docs/AVANCE_2.md`: informes detallados del proyecto y sus resultados.

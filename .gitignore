@@ -1,0 +1,9 @@
+data/raw/
+/run_analysis
+/assess_driver
+/test_risk
+*.o
+*.exe
+.venv/
+__pycache__/
+*.swp
