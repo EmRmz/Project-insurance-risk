@@ -1,80 +1,91 @@
 # Project-insurance-risk
 
-Proyecto académico que estima la frecuencia de siniestros de autos y simula cómo puede cambiar el nivel de riesgo de una cartera de conductores.
+Proyecto académico que modela la frecuencia de siniestros de autos y simula cómo cambia el nivel de riesgo de los conductores con el tiempo.
 
-## En pocas palabras
+## ¿Qué modela?
 
-1. Usa datos reales de seguros de auto de Francia.
-2. Aprende qué características se relacionan con más o menos siniestros.
-3. Clasifica a los conductores en cuatro niveles: Preferencial, Estándar, Riesgo moderado y Alto riesgo.
-4. Simula posibles resultados futuros y compara la simulación con una cadena de Markov.
+El proyecto estima cuántos siniestros se esperan por año para un perfil de conductor. Usa datos de pólizas francesas del conjunto [freMTPL2freq de OpenML](https://www.openml.org/d/41214) y considera características como:
 
-El programa de análisis y el modelo están escritos en C. Python se usa únicamente para crear las gráficas.
+- Edad del conductor.
+- Antigüedad y potencia del vehículo.
+- Coeficiente bonus-malus, que resume el historial de siniestros.
+- Densidad de población y tipo de combustible.
 
-## Datos y límites del modelo
+El modelo estima la **frecuencia** de siniestros, no el costo de las reparaciones ni la severidad de los accidentes.
 
-Se usa el conjunto [freMTPL2freq de OpenML](https://www.openml.org/d/41214), con pólizas reales de Francia. El modelo estima la **frecuencia** de siniestros, no su costo.
+## Modelo de frecuencia
 
-Las categorías se definen usando cuartiles de riesgo de esa población: sirven para comparar conductores dentro de los datos, pero no son una medida universal de peligro ni determinan una prima real. Los resultados son simulaciones, no predicciones garantizadas sobre una persona.
+Se usa un modelo lineal generalizado Poisson (GLM). Para una póliza \(i\), el número de siniestros \(N_i\) se modela como:
 
-## Cómo ejecutarlo
+\[
+N_i \sim \operatorname{Poisson}(e_i\lambda_i)
+\]
 
-Necesitas un compilador C (GCC o Clang), `make`, `curl` y Python 3. La primera ejecución descarga los datos. Para crear las tablas y el modelo:
+donde \(e_i\) es el tiempo de exposición de la póliza en años y \(\lambda_i\) es la frecuencia anual esperada para ese perfil.
 
-```bash
-make run
-```
+La frecuencia se calcula con:
 
-Para compilar y correr las pruebas:
+\[
+\log(\lambda_i)=\beta_0+\sum_{j=1}^{p}\beta_jx_{ij},
+\qquad
+\lambda_i=\exp\left(\beta_0+\sum_{j=1}^{p}\beta_jx_{ij}\right)
+\]
 
-```bash
-make test
-```
+Las variables \(x_{ij}\) representan las características del conductor y del vehículo; los coeficientes \(\beta_j\) se estiman a partir de los datos. La edad se representa con una curva suave por tramos. El ajuste se realiza en C mediante IRLS, un método iterativo equivalente a aplicar Newton para maximizar la verosimilitud del modelo.
 
-Para instalar los paquetes de las gráficas y generarlas:
+La frecuencia también se puede expresar como la probabilidad de tener al menos un siniestro durante un año:
 
-```bash
-python -m pip install -r plots/requirements.txt
-make figures
-```
+\[
+P(N_i\geq 1)=1-\exp(-\lambda_i)
+\]
 
-Las imágenes se guardan en `results/figures/`. `make figures` debe ejecutarse después de `make run`, porque usa las tablas generadas por el análisis.
+## Variación entre conductores
 
-## Evaluar un conductor
+Conductores con características similares pueden tener resultados distintos. Para representar esa variación, las simulaciones usan un multiplicador aleatorio \(\theta_i\):
 
-Primero genera el modelo y compila el programa:
+\[
+\theta_i\sim\operatorname{Gamma}\left(\frac{1}{\phi},\ \text{escala}=\phi\right),
+\qquad
+N_i\mid\theta_i\sim\operatorname{Poisson}(\theta_i\lambda_i)
+\]
 
-```bash
-make run
-make assess_driver
-```
+Así, \(\theta_i\) tiene media 1 y varianza \(\phi\), que se estima con los datos. Esta mezcla de distribuciones Poisson y Gamma produce más variabilidad entre conductores que una Poisson simple.
 
-Ejemplo en Windows PowerShell:
+## Niveles de riesgo
 
-```powershell
-.\assess_driver.exe --age 23 --veh-age 3 --bonus-malus 90 --density 1200 --horizon 10
-```
+El proyecto ordena las frecuencias estimadas \(\lambda\) de la población y usa sus cuartiles para formar cuatro grupos:
 
-En Linux o macOS, usa `./assess_driver` en lugar de `.\assess_driver.exe`.
+1. Preferencial.
+2. Estándar.
+3. Riesgo moderado.
+4. Alto riesgo.
 
-El programa muestra la frecuencia esperada de siniestros por año, su categoría actual y una proyección. Puedes cambiar los datos con estas opciones:
+Por eso, los niveles son **relativos a la población analizada**: no son umbrales universales de peligrosidad ni una tarifa de seguro.
 
-| Opción | Significado | Valor predeterminado |
-|---|---|---:|
-| `--age` | Edad del conductor (requerida) | — |
-| `--veh-age` | Antigüedad del vehículo en años (requerida) | — |
-| `--veh-power` | Clase de potencia del vehículo | 6 |
-| `--bonus-malus` | Coeficiente de historial; 50 es bajo y 100 equivale a conductor nuevo | 100 |
-| `--density` | Densidad de población en habitantes/km² | 1000 |
-| `--gas` | Tipo de combustible: `Regular` o `Diesel` | `Regular` |
-| `--horizon` | Años de proyección, entre 0 y 50 | 10 |
-| `--years` | Simulaciones Monte Carlo | 10000 |
-| `--seed` | Semilla para repetir la simulación | Hora actual |
+## Simulación de cambios en el tiempo
 
-## Archivos principales
+Para simular una cartera, el programa repite estos pasos cada año:
 
-- `src/`: modelo, datos, simulación y cadena de Markov en C.
-- `plots/`: scripts Python para generar las gráficas.
-- `results/`: tablas CSV, modelo ajustado y gráficas generadas.
-- `tests/`: pruebas del modelo y la simulación.
-- `docs/AVANCE_1.md` y `docs/AVANCE_2.md`: informes detallados del proyecto y sus resultados.
+1. Genera el número de siniestros de cada conductor usando su frecuencia estimada.
+2. Actualiza su bonus-malus: baja 5% si no tuvo siniestros y sube 25% por cada siniestro, respetando los límites definidos por la regla.
+3. Aumenta la edad del conductor y vuelve a calcular su nivel de riesgo.
+
+La simulación separa el riesgo usado para generar siniestros del nivel que la aseguradora asigna. En las trayectorias de vida, los siniestros se generan con un modelo sin bonus-malus; luego el historial actualizado sí se considera para volver a clasificar al conductor. Esto evita que el bonus-malus por sí solo cree una retroalimentación artificial en el riesgo subyacente.
+
+## Cadena de Markov
+
+Los cuatro niveles se usan como estados de una cadena de Markov. La probabilidad de pasar del nivel \(i\) al nivel \(j\) en un año se representa por \(P_{ij}\). Se estima contando las transiciones observadas en la simulación y dividiendo cada conteo entre el total de conductores que comenzaron en el nivel \(i\).
+
+La distribución de la cartera después de \(t\) años se proyecta mediante:
+
+\[
+\boldsymbol{\pi}_t=\boldsymbol{\pi}_0P^t
+\]
+
+donde \(\boldsymbol{\pi}_0\) es la distribución inicial de conductores entre niveles. Esta proyección se compara con la simulación Monte Carlo. La cadena es una aproximación: dos conductores del mismo nivel pueden tener distintas edades y características, por lo que sus probabilidades futuras no necesariamente son iguales.
+
+## Alcance e interpretación
+
+Los datos describen pólizas de Francia y el modelo estima frecuencia, no costo total de siniestros. Las simulaciones muestran resultados posibles bajo los supuestos del modelo; no son predicciones garantizadas sobre una persona ni deben interpretarse como una evaluación universal del riesgo.
+
+Los informes detallados del proyecto están en [docs/AVANCE_1.md](docs/AVANCE_1.md) y [docs/AVANCE_2.md](docs/AVANCE_2.md).
