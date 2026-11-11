@@ -1,91 +1,43 @@
-# Project-insurance-risk
+# Riesgo de siniestro por edad
 
-Proyecto académico que modela la frecuencia de siniestros de autos y simula cómo cambia el nivel de riesgo de los conductores con el tiempo.
+Aplicación sencilla que usa las pólizas reales de `data/raw/freMTPL2freq.arff` para estimar la frecuencia de siniestros por grupo de edad y mostrar una simulación Monte Carlo.
 
-## ¿Qué modela?
+## Cómo funciona
 
-El proyecto estima cuántos siniestros se esperan por año para un perfil de conductor. Usa datos de pólizas francesas del conjunto [freMTPL2freq de OpenML](https://www.openml.org/d/41214) y considera características como:
+1. El programa en C lee las pólizas y agrupa a los conductores adultos por edad.
+2. Para cada grupo calcula la tasa observada: total de siniestros dividido entre el total de años asegurados (exposición).
+3. Con esa tasa, C simula siniestros durante la cantidad de años indicada y calcula la proporción de años con al menos un siniestro.
+4. Python muestra los resultados en una gráfica interactiva y resalta el grupo de edad elegido.
 
-- Edad del conductor.
-- Antigüedad y potencia del vehículo.
-- Coeficiente bonus-malus, que resume el historial de siniestros.
-- Densidad de población y tipo de combustible.
+La línea de la gráfica representa la probabilidad calculada en C a partir de la tasa observada. Los puntos representan la proporción obtenida por Monte Carlo; las barras muestran un intervalo aproximado del 95%.
 
-El modelo estima la **frecuencia** de siniestros, no el costo de las reparaciones ni la severidad de los accidentes.
+La edad selecciona un grupo de datos; no es una predicción individual. El análisis describe pólizas de Francia y no considera el costo de los siniestros.
 
-## Modelo de frecuencia
+## Archivos
 
-Se usa un modelo lineal generalizado Poisson (GLM). Para una póliza \(i\), el número de siniestros \(N_i\) se modela como:
+- `src/age_risk.c`: lectura de datos, tasas por edad y simulación Monte Carlo.
+- `app.py`: interfaz y gráfica; no calcula tasas ni simula siniestros.
+- `tests/test_age_risk.c`: pruebas del programa en C.
+- `data/raw/freMTPL2freq.arff`: datos utilizados.
 
-\[
-N_i \sim \operatorname{Poisson}(e_i\lambda_i)
-\]
+## Ejecutar en WSL
 
-donde \(e_i\) es el tiempo de exposición de la póliza en años y \(\lambda_i\) es la frecuencia anual esperada para ese perfil.
+Instala las dependencias de Python y compila el programa en C:
 
-La frecuencia se calcula con:
+```bash
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+make
+```
 
-\[
-\log(\lambda_i)=\beta_0+\sum_{j=1}^{p}\beta_jx_{ij},
-\qquad
-\lambda_i=\exp\left(\beta_0+\sum_{j=1}^{p}\beta_jx_{ij}\right)
-\]
+Inicia la aplicación:
 
-Las variables \(x_{ij}\) representan las características del conductor y del vehículo; los coeficientes \(\beta_j\) se estiman a partir de los datos. La edad se representa con una curva suave por tramos. El ajuste se realiza en C mediante IRLS, un método iterativo equivalente a aplicar Newton para maximizar la verosimilitud del modelo.
+```bash
+python -m streamlit run app.py
+```
 
-La frecuencia también se puede expresar como la probabilidad de tener al menos un siniestro durante un año:
+Para ejecutar las pruebas del código C:
 
-\[
-P(N_i\geq 1)=1-\exp(-\lambda_i)
-\]
-
-## Variación entre conductores
-
-Conductores con características similares pueden tener resultados distintos. Para representar esa variación, las simulaciones usan un multiplicador aleatorio \(\theta_i\):
-
-\[
-\theta_i\sim\operatorname{Gamma}\left(\frac{1}{\phi},\ \text{escala}=\phi\right),
-\qquad
-N_i\mid\theta_i\sim\operatorname{Poisson}(\theta_i\lambda_i)
-\]
-
-Así, \(\theta_i\) tiene media 1 y varianza \(\phi\), que se estima con los datos. Esta mezcla de distribuciones Poisson y Gamma produce más variabilidad entre conductores que una Poisson simple.
-
-## Niveles de riesgo
-
-El proyecto ordena las frecuencias estimadas \(\lambda\) de la población y usa sus cuartiles para formar cuatro grupos:
-
-1. Preferencial.
-2. Estándar.
-3. Riesgo moderado.
-4. Alto riesgo.
-
-Por eso, los niveles son **relativos a la población analizada**: no son umbrales universales de peligrosidad ni una tarifa de seguro.
-
-## Simulación de cambios en el tiempo
-
-Para simular una cartera, el programa repite estos pasos cada año:
-
-1. Genera el número de siniestros de cada conductor usando su frecuencia estimada.
-2. Actualiza su bonus-malus: baja 5% si no tuvo siniestros y sube 25% por cada siniestro, respetando los límites definidos por la regla.
-3. Aumenta la edad del conductor y vuelve a calcular su nivel de riesgo.
-
-La simulación separa el riesgo usado para generar siniestros del nivel que la aseguradora asigna. En las trayectorias de vida, los siniestros se generan con un modelo sin bonus-malus; luego el historial actualizado sí se considera para volver a clasificar al conductor. Esto evita que el bonus-malus por sí solo cree una retroalimentación artificial en el riesgo subyacente.
-
-## Cadena de Markov
-
-Los cuatro niveles se usan como estados de una cadena de Markov. La probabilidad de pasar del nivel \(i\) al nivel \(j\) en un año se representa por \(P_{ij}\). Se estima contando las transiciones observadas en la simulación y dividiendo cada conteo entre el total de conductores que comenzaron en el nivel \(i\).
-
-La distribución de la cartera después de \(t\) años se proyecta mediante:
-
-\[
-\boldsymbol{\pi}_t=\boldsymbol{\pi}_0P^t
-\]
-
-donde \(\boldsymbol{\pi}_0\) es la distribución inicial de conductores entre niveles. Esta proyección se compara con la simulación Monte Carlo. La cadena es una aproximación: dos conductores del mismo nivel pueden tener distintas edades y características, por lo que sus probabilidades futuras no necesariamente son iguales.
-
-## Alcance e interpretación
-
-Los datos describen pólizas de Francia y el modelo estima frecuencia, no costo total de siniestros. Las simulaciones muestran resultados posibles bajo los supuestos del modelo; no son predicciones garantizadas sobre una persona ni deben interpretarse como una evaluación universal del riesgo.
-
-Los informes detallados del proyecto están en [docs/AVANCE_1.md](docs/AVANCE_1.md) y [docs/AVANCE_2.md](docs/AVANCE_2.md).
+```bash
+make test
+```

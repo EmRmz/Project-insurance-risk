@@ -1,9 +1,9 @@
 data/raw/
-/run_analysis
-/assess_driver
-/test_risk
-*.o
-*.exe
 .venv/
 __pycache__/
+*.py[cod]
+*.exe
+*.o
+age_risk
+test_age_risk
 *.swp
