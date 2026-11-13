@@ -2,22 +2,6 @@
 
 Proyecto final de Modelado y Simulación. Con pólizas reales de seguros de auto (`data/raw/freMTPL2freq.arff`) se estima, para cada grupo de edad, la probabilidad de que un conductor tenga al menos un siniestro en un año, usando el método de Monte Carlo. El programa en C hace la lectura y los cálculos; Python solo muestra los resultados en una gráfica.
 
-## Variables
-
-| Variable | Significado | Ejemplo (grupo 20-24) |
-|---|---|---|
-| S | Siniestros totales del grupo (suma de `ClaimNb`) | 2056 |
-| E | Exposición total del grupo: años asegurados sumados (suma de `Exposure`) | 11365.56 años |
-| λ | Tasa: siniestros promedio por conductor en un año | 0.181 |
-| X | Número de siniestros que tiene un conductor en un año (es aleatorio) | 0, 1, 2… |
-| P | Probabilidad exacta de tener al menos un siniestro en un año | 16.5% |
-| N | Número de años que se simulan en Monte Carlo (lo elige el usuario) | 100000 |
-| A | Años simulados en los que hubo al menos un siniestro | 16389 |
-| p̂ | Probabilidad estimada por Monte Carlo | 16.4% |
-| U | Número aleatorio uniforme entre 0 y 1 | 0.73 |
-| z | Valor para un intervalo de confianza del 95% | 1.96 |
-| M | Margen de error de la estimación | ±0.23% |
-
 ## Pasos de modelado
 
 1. **Observar (datos).** Se usa el dataset freMTPL2freq de Francia. De cada póliza se toman tres columnas: la edad del conductor (`DrivAge`), el número de siniestros (`ClaimNb`) y el tiempo asegurado en años (`Exposure`). Solo se usan conductores de 18 a 100 años con exposición mayor a 0.
