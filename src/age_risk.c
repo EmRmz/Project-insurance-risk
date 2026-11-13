@@ -1,6 +1,4 @@
-#include <errno.h>
 #include <math.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -8,28 +6,29 @@
 
 #include "age_risk.h"
 
-#define AGE_GROUPS 16
-#define MAX_AGE 100
-#define MAX_YEARS 1000000
+#define AGE_GROUPS 16     /* cantidad de grupos de edad */
+#define MAX_AGE 100       /* edad máxima aceptada */
+#define MAX_YEARS 1000000 /* máximo de años que se pueden simular */
+#define Z_95 1.96         /* valor z para un intervalo de confianza del 95% */
 
+/* Totales de un grupo de edad, acumulados al leer el dataset. */
 typedef struct {
-    long policies;
-    double claims;
-    double exposure;
+    long policies;   /* número de pólizas del grupo */
+    double claims;   /* suma de siniestros */
+    double exposure; /* suma de años asegurados */
 } AgeStats;
-
-typedef struct {
-    uint64_t state;
-} Random;
 
 static const char *const GROUP_NAMES[AGE_GROUPS] = {
     "18-19", "20-24", "25-29", "30-34", "35-39", "40-44", "45-49", "50-54",
     "55-59", "60-64", "65-69", "70-74", "75-79", "80-84", "85-89", "90+"
 };
+
+/* Edad que representa a cada grupo en el eje x de la gráfica. */
 static const double GROUP_CENTERS[AGE_GROUPS] = {
     18.5, 22, 27, 32, 37, 42, 47, 52, 57, 62, 67, 72, 77, 82, 87, 95
 };
 
+/* Devuelve el número de grupo (0 a 15) de una edad, o -1 si está fuera de rango. */
 int age_group_index(int age)
 {
     if (age < 18 || age > MAX_AGE)
@@ -41,114 +40,78 @@ int age_group_index(int age)
     return 1 + (age - 20) / 5;
 }
 
-static uint64_t random_next(Random *random)
+/* Número pseudoaleatorio uniforme entre 0 y 1. */
+static double random_uniform(void)
 {
-    uint64_t value = random->state;
-    value ^= value >> 12;
-    value ^= value << 25;
-    value ^= value >> 27;
-    random->state = value;
-    return value * UINT64_C(2685821657736338717);
+    return rand() / ((double)RAND_MAX + 1.0);
 }
 
-static double random_uniform(Random *random)
+/*
+ * Simula cuántos siniestros tiene un conductor en un año.
+ * Método de Knuth: se multiplican números aleatorios hasta que el producto
+ * baja de e^(-tasa). La cantidad de multiplicaciones extra sigue una Poisson.
+ */
+static int poisson_sample(double rate)
 {
-    return (double)(random_next(random) >> 11) * 0x1.0p-53;
-}
-
-static int poisson_sample(Random *random, double rate)
-{
-    int claims = 0;
-    while (rate > 30) {
-        claims += poisson_sample(random, 30);
-        rate -= 30;
-    }
-
     double limit = exp(-rate);
-    double product = random_uniform(random);
+    double product = random_uniform();
+    int claims = 0;
     while (product > limit) {
         claims++;
-        product *= random_uniform(random);
+        product *= random_uniform();
     }
     return claims;
 }
 
-static void confidence_interval(int successes, int trials, double *lower, double *upper)
+/* Margen de error del 95%: z * raíz(p(1 - p) / N). */
+static double margin_of_error(double probability, int trials)
 {
-    const double z = 1.96;
-    double probability = (double)successes / trials;
-    double denominator = 1 + z * z / trials;
-    double center = (probability + z * z / (2 * trials)) / denominator;
-    double margin = z * sqrt(probability * (1 - probability) / trials +
-                             z * z / (4.0 * trials * trials)) / denominator;
-    *lower = fmax(0, center - margin);
-    *upper = fmin(1, center + margin);
+    return Z_95 * sqrt(probability * (1 - probability) / trials);
 }
 
-static int parse_number(const char *text, double *number)
-{
-    char *end;
-    errno = 0;
-    double value = strtod(text, &end);
-    if (errno || end == text || *end != '\0' || !isfinite(value))
-        return 0;
-    *number = value;
-    return 1;
-}
-
-static int read_data(const char *path, AgeStats stats[AGE_GROUPS], FILE *errors)
+/*
+ * Lee el archivo .arff y suma pólizas, siniestros y exposición por grupo de edad.
+ * Columnas que se usan: 1 = ClaimNb (siniestros), 2 = Exposure, 6 = DrivAge (edad).
+ */
+static int read_data(const char *path, AgeStats *stats, FILE *errors)
 {
     FILE *file = fopen(path, "r");
-    if (!file) {
+    if (file == NULL) {
         fprintf(errors, "No se pudo abrir el dataset: %s\n", path);
         return 0;
     }
 
     char line[1024];
     long valid_policies = 0;
-    while (fgets(line, sizeof line, file)) {
-        if (line[0] == '@' || line[0] == '\n' || line[0] == '\r')
+    while (fgets(line, sizeof line, file) != NULL) {
+        /* Saltar encabezados (@...), comentarios (%...) y líneas vacías. */
+        if (line[0] == '@' || line[0] == '%' || line[0] == '\n' || line[0] == '\r')
             continue;
 
-        char *fields[12];
-        char *field = line;
-        int field_count = 0;
-        while (field_count < 12) {
-            fields[field_count++] = field;
-            char *comma = strchr(field, ',');
-            if (!comma)
-                break;
-            *comma = '\0';
-            field = comma + 1;
+        double claims = -1, exposure = 0;
+        int age = 0;
+        char *field = strtok(line, ",");
+        for (int column = 0; field != NULL && column <= 6; column++) {
+            if (column == 1)
+                claims = atof(field);
+            else if (column == 2)
+                exposure = atof(field);
+            else if (column == 6)
+                age = atoi(field);
+            field = strtok(NULL, ",");
         }
-        if (field_count != 12)
-            continue;
 
-        char *line_end = strpbrk(fields[11], "\r\n");
-        if (line_end)
-            *line_end = '\0';
+        int group = age_group_index(age);
+        if (group < 0 || claims < 0 || exposure <= 0)
+            continue; /* registro incompleto o fuera de rango */
 
-        double claims, exposure, age_value;
-        if (!parse_number(fields[1], &claims) ||
-            !parse_number(fields[2], &exposure) ||
-            !parse_number(fields[6], &age_value) ||
-            claims < 0 || exposure <= 0 ||
-            age_value < 18 || age_value > MAX_AGE || floor(age_value) != age_value)
-            continue;
-
-        int index = age_group_index((int)age_value);
-        stats[index].policies++;
-        stats[index].claims += claims;
-        stats[index].exposure += exposure;
+        stats[group].policies++;
+        stats[group].claims += claims;
+        stats[group].exposure += exposure;
         valid_policies++;
     }
-
-    int read_ok = !ferror(file);
     fclose(file);
-    if (!read_ok) {
-        fprintf(errors, "Error al leer el dataset: %s\n", path);
-        return 0;
-    }
+
     if (valid_policies == 0) {
         fprintf(errors, "El dataset no contiene pólizas adultas válidas.\n");
         return 0;
@@ -156,13 +119,16 @@ static int read_data(const char *path, AgeStats stats[AGE_GROUPS], FILE *errors)
     return 1;
 }
 
-int run_analysis(const char *path, int selected_age, int years, uint64_t seed,
+/*
+ * Calcula la tasa de cada grupo, ejecuta Monte Carlo y escribe una tabla CSV.
+ * years = cuántos años se simulan por grupo (N de Monte Carlo).
+ */
+int run_analysis(const char *path, int selected_age, int years, unsigned int seed,
                  FILE *output, FILE *errors)
 {
-    if (!path || !output || !errors || age_group_index(selected_age) < 0 ||
-        years < 1 || years > MAX_YEARS) {
-        if (errors)
-            fprintf(errors, "Edad o cantidad de años simulados fuera de rango.\n");
+    int selected_group = age_group_index(selected_age);
+    if (selected_group < 0 || years < 1 || years > MAX_YEARS) {
+        fprintf(errors, "Edad o cantidad de años simulados fuera de rango.\n");
         return 0;
     }
 
@@ -170,36 +136,37 @@ int run_analysis(const char *path, int selected_age, int years, uint64_t seed,
     if (!read_data(path, stats, errors))
         return 0;
 
-    int selected_group = age_group_index(selected_age);
     if (stats[selected_group].policies == 0) {
         fprintf(errors, "No hay pólizas válidas para el grupo de edad %s.\n",
                 GROUP_NAMES[selected_group]);
         return 0;
     }
 
-    Random random = {seed ? seed : UINT64_C(88172645463325252)};
-    fprintf(output, "age_group,age_center,policies,claims,exposure,rate,exact_probability,"
-                    "mc_probability,ci_lower,ci_upper,error_plus,error_minus,selected\n");
+    srand(seed);
+    fprintf(output, "age_group,age_center,policies,claims,exposure,rate,"
+                    "exact_probability,mc_probability,margin,selected\n");
+
     for (int i = 0; i < AGE_GROUPS; i++) {
-        if (stats[i].policies == 0 || stats[i].exposure <= 0)
+        if (stats[i].policies == 0)
             continue;
 
+        /* Modelo: tasa = siniestros / exposición, probabilidad exacta = 1 - e^(-tasa). */
         double rate = stats[i].claims / stats[i].exposure;
-        int years_with_claim = 0;
-        for (int year = 0; year < years; year++)
-            years_with_claim += poisson_sample(&random, rate) > 0;
+        double exact_probability = 1 - exp(-rate);
 
-        double probability = (double)years_with_claim / years;
-        double lower, upper;
-        confidence_interval(years_with_claim, years, &lower, &upper);
-        fprintf(output, "%s,%.1f,%ld,%.0f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%d\n",
+        /* Monte Carlo: contar en cuántos años simulados hubo al menos un siniestro. */
+        int years_with_claim = 0;
+        for (int year = 0; year < years; year++) {
+            if (poisson_sample(rate) > 0)
+                years_with_claim++;
+        }
+        double mc_probability = (double)years_with_claim / years;
+        double margin = margin_of_error(mc_probability, years);
+
+        fprintf(output, "%s,%.1f,%ld,%.0f,%.6f,%.6f,%.6f,%.6f,%.6f,%d\n",
                 GROUP_NAMES[i], GROUP_CENTERS[i], stats[i].policies, stats[i].claims,
-                stats[i].exposure, rate, 1 - exp(-rate), probability, lower, upper,
-                upper - probability, probability - lower, i == selected_group);
-    }
-    if (ferror(output)) {
-        fprintf(errors, "Error al escribir los resultados.\n");
-        return 0;
+                stats[i].exposure, rate, exact_probability, mc_probability, margin,
+                i == selected_group);
     }
     return 1;
 }
@@ -209,58 +176,36 @@ static void usage(const char *program)
 {
     fprintf(stderr,
             "Uso: %s --data ARCHIVO --age EDAD --years ANIOS [--seed SEMILLA]\n"
-            "  EDAD: 18-100; ANIOS: 1-%d\n",
-            program, MAX_YEARS);
-}
-
-static int parse_integer(const char *text, long min, long max, long *value)
-{
-    char *end;
-    errno = 0;
-    long parsed = strtol(text, &end, 10);
-    if (errno || end == text || *end != '\0' || parsed < min || parsed > max)
-        return 0;
-    *value = parsed;
-    return 1;
+            "  EDAD: 18-%d; ANIOS: 1-%d\n",
+            program, MAX_AGE, MAX_YEARS);
 }
 
 int main(int argc, char **argv)
 {
     const char *path = NULL;
-    long age = -1, years = 10000, seed = (long)time(NULL);
-    for (int i = 1; i < argc; i++) {
-        if (i + 1 >= argc) {
-            usage(argv[0]);
-            return 2;
-        }
-        const char *option = argv[i++];
-        const char *value = argv[i];
-        if (strcmp(option, "--data") == 0)
-            path = value;
-        else if (strcmp(option, "--age") == 0) {
-            if (!parse_integer(value, 18, MAX_AGE, &age)) {
-                fprintf(stderr, "La edad debe estar entre 18 y %d.\n", MAX_AGE);
-                return 2;
-            }
-        } else if (strcmp(option, "--years") == 0) {
-            if (!parse_integer(value, 1, MAX_YEARS, &years)) {
-                fprintf(stderr, "Los años simulados deben estar entre 1 y %d.\n", MAX_YEARS);
-                return 2;
-            }
-        } else if (strcmp(option, "--seed") == 0) {
-            if (!parse_integer(value, 0, 2147483647, &seed)) {
-                fprintf(stderr, "La semilla debe ser un entero no negativo.\n");
-                return 2;
-            }
-        } else {
+    int age = -1;
+    int years = 10000;
+    unsigned int seed = (unsigned int)time(NULL);
+
+    /* Leer los argumentos en pares: --opcion valor */
+    for (int i = 1; i + 1 < argc; i += 2) {
+        if (strcmp(argv[i], "--data") == 0)
+            path = argv[i + 1];
+        else if (strcmp(argv[i], "--age") == 0)
+            age = atoi(argv[i + 1]);
+        else if (strcmp(argv[i], "--years") == 0)
+            years = atoi(argv[i + 1]);
+        else if (strcmp(argv[i], "--seed") == 0)
+            seed = (unsigned int)atoi(argv[i + 1]);
+        else {
             usage(argv[0]);
             return 2;
         }
     }
-    if (!path || age < 0) {
+    if (path == NULL || argc % 2 == 0) {
         usage(argv[0]);
         return 2;
     }
-    return run_analysis(path, (int)age, (int)years, (uint64_t)seed, stdout, stderr) ? 0 : 1;
+    return run_analysis(path, age, years, seed, stdout, stderr) ? 0 : 1;
 }
 #endif

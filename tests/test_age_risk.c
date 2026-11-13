@@ -29,17 +29,38 @@ static void test_poisson_simulation(void)
 {
     const int trials = 200000;
     const double rate = 0.1;
-    Random random = {12345};
+    srand(12345);
     int years_with_claim = 0;
     long total_claims = 0;
     for (int i = 0; i < trials; i++) {
-        int claims = poisson_sample(&random, rate);
+        int claims = poisson_sample(rate);
         total_claims += claims;
         years_with_claim += claims > 0;
     }
     double observed = (double)years_with_claim / trials;
     CHECK(fabs((double)total_claims / trials - rate) < 0.004);
     CHECK(fabs(observed - (1 - exp(-rate))) < 0.005);
+}
+
+static void test_convergence_with_more_samples(void)
+{
+    const int checkpoints[] = {1000, 10000, 100000, 1000000};
+    const double rate = 0.1;
+    const double exact = 1 - exp(-rate);
+    srand(67890);
+    int successes = 0;
+    int previous = 0;
+
+    for (size_t i = 0; i < sizeof checkpoints / sizeof checkpoints[0]; i++) {
+        int samples = checkpoints[i];
+        while (previous < samples) {
+            successes += poisson_sample(rate) > 0;
+            previous++;
+        }
+        double estimate = (double)successes / samples;
+        double standard_error = sqrt(estimate * (1 - estimate) / samples);
+        CHECK(fabs(estimate - exact) <= 4 * standard_error + 1.0 / samples);
+    }
 }
 
 static void test_dataset_rates(void)
@@ -88,6 +109,7 @@ int main(void)
 {
     test_age_groups();
     test_poisson_simulation();
+    test_convergence_with_more_samples();
     test_dataset_rates();
     printf("%s (%d fallas)\n", failures ? "Pruebas fallidas" : "Todas las pruebas pasaron",
            failures);

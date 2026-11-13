@@ -58,9 +58,7 @@ def draw_chart(rows: list[dict[str, str]], age: int) -> go.Figure:
         marker={"color": "#43a6a0", "size": 9},
         error_y={
             "type": "data",
-            "symmetric": False,
-            "array": [float(row["error_plus"]) for row in rows],
-            "arrayminus": [float(row["error_minus"]) for row in rows],
+            "array": [float(row["margin"]) for row in rows],
             "color": "#43a6a0",
             "thickness": 1.5,
             "width": 4,
@@ -82,9 +80,7 @@ def draw_chart(rows: list[dict[str, str]], age: int) -> go.Figure:
         marker={"color": "#ed7048", "size": 16, "line": {"color": "white", "width": 2}},
         error_y={
             "type": "data",
-            "symmetric": False,
-            "array": [float(selected["error_plus"])],
-            "arrayminus": [float(selected["error_minus"])],
+            "array": [float(selected["margin"])],
             "color": "#ed7048",
             "thickness": 2,
             "width": 5,
