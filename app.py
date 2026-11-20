@@ -39,7 +39,7 @@ def draw_chart(rows: list[dict[str, str]], age: int) -> go.Figure:
         x=ages,
         y=observed,
         mode="lines+markers",
-        name="Estimación según los datos",
+        name="Probabilidad exacta",
         line={"color": "#245b8f", "width": 3},
         marker={"size": 7},
         customdata=[[row["age_group"], row["rate"], row["policies"]] for row in rows],
@@ -71,7 +71,7 @@ def draw_chart(rows: list[dict[str, str]], age: int) -> go.Figure:
         ),
     ))
     figure.add_trace(go.Scatter(
-        x=[age],
+        x=[float(selected["age_center"])],
         y=[float(selected["mc_probability"])],
         mode="markers+text",
         name=f"Edad seleccionada: {age}",
@@ -86,11 +86,11 @@ def draw_chart(rows: list[dict[str, str]], age: int) -> go.Figure:
             "width": 5,
         },
         hovertemplate=(
-            "Edad seleccionada: %{x} años<br>"
+            "Edad seleccionada: %{customdata[1]} años<br>"
             "Grupo: %{customdata[0]}<br>"
             "Probabilidad Monte Carlo: %{y:.1%}<extra></extra>"
         ),
-        customdata=[[selected["age_group"]]],
+        customdata=[[selected["age_group"], age]],
     ))
     figure.update_layout(
         template="plotly_white",
@@ -156,10 +156,10 @@ def main() -> None:
     )
     st.plotly_chart(
         draw_chart(rows, int(age)),
-        use_container_width=True,
+        width="stretch",
     )
     st.caption(
-        "La línea muestra la probabilidad calculada en C a partir de las pólizas; "
+        "La línea muestra la probabilidad exacta P = 1 − e^(−λ) calculada en C; "
         "los puntos muestran la proporción Monte Carlo y su intervalo aproximado del 95%."
     )
 

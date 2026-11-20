@@ -75,7 +75,8 @@ static void test_dataset_rates(void)
           "2,0,0.5,'D',5,0,22,50,'B12','Regular',1217,'R82'\n"
           "3,2,1.0,'D',5,0,25,50,'B12','Regular',1217,'R82'\n"
           "4,4,1.0,'D',5,0,17,50,'B12','Regular',1217,'R82'\n"
-          "5,4,0.0,'D',5,0,23,50,'B12','Regular',1217,'R82'\n", fixture);
+          "5,4,0.0,'D',5,0,23,50,'B12','Regular',1217,'R82'\n"
+          "6,9,1.5,'D',5,0,31,50,'B12','Regular',1217,'R82'\n", fixture);
     fclose(fixture);
 
     FILE *output = tmpfile();
@@ -99,6 +100,8 @@ static void test_dataset_rates(void)
     CHECK(selected_row != NULL);
     CHECK(selected_row && strstr(selected_row, ",1\n") != NULL);
     CHECK(strstr(result, "25-29,27.0,1,2,1.000000,2.000000,0.864665,") != NULL);
+    /* Póliza con 9 siniestros y 1.5 años: se topa a 4 siniestros y 1 año. */
+    CHECK(strstr(result, "30-34,32.0,1,4,1.000000,4.000000,") != NULL);
 
     fclose(output);
     fclose(errors);

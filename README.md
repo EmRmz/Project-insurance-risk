@@ -4,7 +4,7 @@ Proyecto final de Modelado y Simulación. Con pólizas reales de seguros de auto
 
 ## Pasos de modelado
 
-1. **Observar (datos).** Se usa el dataset freMTPL2freq de Francia. De cada póliza se toman tres columnas: la edad del conductor (`DrivAge`), el número de siniestros (`ClaimNb`) y el tiempo asegurado en años (`Exposure`). Solo se usan conductores de 18 a 100 años con exposición mayor a 0.
+1. **Observar (datos).** Se usa el dataset freMTPL2freq de Francia. De cada póliza se toman tres columnas: la edad del conductor (`DrivAge`), el número de siniestros (`ClaimNb`) y el tiempo asegurado en años (`Exposure`). Solo se usan conductores de 18 a 100 años con exposición mayor a 0. Para evitar valores atípicos, cada póliza cuenta como máximo 4 siniestros y 1 año de exposición.
 
 2. **Marco teórico.** Monte Carlo obtiene una respuesta aproximada repitiendo muchas veces un experimento con números aleatorios y promediando. Para contar eventos que ocurren al azar en un periodo de tiempo (como choques en un año) se usa la distribución de Poisson, que depende de un solo parámetro: la tasa λ.
 
@@ -27,5 +27,7 @@ Proyecto final de Modelado y Simulación. Con pólizas reales de seguros de auto
 ## Interpretación de la gráfica
 
 La línea muestra la probabilidad exacta P de cada grupo de edad. Los puntos son la estimación p̂ de Monte Carlo y sus barras el margen M. El punto naranja marca el grupo de la edad elegida.
+
+El margen M solo mide el error de la simulación; no incluye la incertidumbre de λ, que también es una estimación hecha con los datos.
 
 El resultado es un promedio del grupo, no una predicción para una persona. Los datos son de Francia y solo se modela la frecuencia de siniestros, no su costo.

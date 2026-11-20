@@ -9,6 +9,7 @@
 #define AGE_GROUPS 16     /* cantidad de grupos de edad */
 #define MAX_AGE 100       /* edad máxima aceptada */
 #define MAX_YEARS 1000000 /* máximo de años que se pueden simular */
+#define MAX_CLAIMS 4      /* tope de siniestros por póliza (valores atípicos) */
 #define Z_95 1.96         /* valor z para un intervalo de confianza del 95% */
 
 /* Totales de un grupo de edad, acumulados al leer el dataset. */
@@ -104,6 +105,12 @@ static int read_data(const char *path, AgeStats *stats, FILE *errors)
         int group = age_group_index(age);
         if (group < 0 || claims < 0 || exposure <= 0)
             continue; /* registro incompleto o fuera de rango */
+
+        /* Valores atípicos: como máximo 4 siniestros y 1 año asegurado por póliza. */
+        if (claims > MAX_CLAIMS)
+            claims = MAX_CLAIMS;
+        if (exposure > 1)
+            exposure = 1;
 
         stats[group].policies++;
         stats[group].claims += claims;
