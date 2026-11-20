@@ -1,6 +1,10 @@
 # Riesgo de siniestro por edad
 
-Probabilidad de que un conductor tenga al menos un siniestro en un año, por grupo de edad, estimada con Monte Carlo y Poisson.
+## Descripción
+
+Proyecto final de Modelado y Simulación. Usa pólizas reales de seguros de auto de Francia (dataset freMTPL2freq) para estimar, en cada grupo de edad, la probabilidad de que un conductor tenga **al menos un siniestro en un año**. El programa en C lee los datos, calcula las tasas y hace la simulación; Python solo muestra los resultados en una gráfica.
+
+**Modelo:** el número de siniestros de un conductor en un año se modela con una **distribución de Poisson** de tasa λ. La tasa se obtiene de los datos y la probabilidad se estima con el **método de Monte Carlo**, simulando N años con el **método de Knuth**. El resultado se compara con la probabilidad exacta para validar la simulación.
 
 ---
 
@@ -23,41 +27,3 @@ Probabilidad de que un conductor tenga al menos un siniestro en un año, por gru
 ```
 
 $S$ = siniestros del grupo, $E$ = años asegurados del grupo.
-
----
-
-## Modelo de Poisson
-
-```math
-X \sim \text{Poisson}(\lambda), \qquad P(X = k) = \frac{\lambda^{k}\, e^{-\lambda}}{k!}
-```
-
----
-
-## Probabilidad exacta
-
-```math
-P(X \ge 1) = 1 - e^{-\lambda}
-```
-
----
-
-## Simulación de un año (método de Knuth)
-
-```math
-U \sim \text{Uniforme}(0, 1)
-```
-
-```math
-X = \min \left\{ k \ge 0 \;:\; \prod_{j=0}^{k} U_j \le e^{-\lambda} \right\}
-```
-
----
-
-## Estimación Monte Carlo
-
-```math
-\hat{p} = \frac{A}{N}
-```
-
-$A$ = años simulados con $X \ge 1$.
